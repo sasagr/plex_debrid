@@ -569,9 +569,15 @@ class media:
             if self.type == 'movie':
                 if regex.search(str(self.year), releases.rename(self.title.replace(str(self.year), '') + ' ' + str(self.year))):
                     title = title.replace('.' + str(self.year), '')
+                    # reject releases that name a different year after the title (e.g. Sleuth.1972 for Sleuth 2007)
+                    allowed_years = [str(year)] if year != "" else [str(self.year), str(self.year - 1), str(self.year + 1)]
+                    wrong_year = '(?!.*?(?<![0-9a-z])(?!(?:' + '|'.join(allowed_years) + ')(?![0-9a-z]))(?:19[0-9]{2}|20[0-4][0-9])(?![0-9a-z]))'
+                    # the release must start with the title, or name the right year after it (e.g. 'Www UIndex Org Sleuth 2007'),
+                    # so unrelated releases that merely contain the title word are not matched
+                    title_anchor = '(?=[^0-9a-z]*' + title + '|.*?' + title + '.*?(?<![0-9a-z])(?:' + '|'.join(allowed_years) + ')(?![0-9a-z]))'
                     if year != "":
-                        return '(.*?)(' + title + ':?.*)\(?\[?(' + str(year) + ')?'
-                    return '(.*?)(' + title + ':?.*)\(?\[?(' + str(self.year) + '|' + str(self.year - 1) + '|' + str(self.year + 1) + ')?'
+                        return title_anchor + '(.*?)(' + title + wrong_year + ':?.*)\(?\[?(' + str(year) + ')?'
+                    return title_anchor + '(.*?)(' + title + wrong_year + ':?.*)\(?\[?(' + str(self.year) + '|' + str(self.year - 1) + '|' + str(self.year + 1) + ')?'
                 else:
                     title = title.replace('.' + str(self.year), '')
                     return '(.*?)(' + title + ')'
