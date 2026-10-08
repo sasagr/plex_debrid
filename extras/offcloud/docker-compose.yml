@@ -1,0 +1,20 @@
+# Offcloud cloud downloads mounted read-only at /mnt/offcloud (WebDAV, login = account email + API key in rclone.conf)
+services:
+  rclone-offcloud:
+    image: rclone/rclone:latest
+    container_name: rclone-offcloud
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Nicosia
+      PUID: 1000
+      PGID: 1000
+    volumes:
+      - /mnt/offcloud:/data:rshared
+      - ./rclone.conf:/config/rclone/rclone.conf:ro
+    cap_add:
+      - SYS_ADMIN
+    security_opt:
+      - apparmor:unconfined
+    devices:
+      - /dev/fuse:/dev/fuse:rwm
+    command: "mount offcloud: /data --read-only --allow-other --allow-non-empty --dir-cache-time 10s --vfs-cache-mode full --vfs-cache-max-size 10G --vfs-cache-max-age 2h"

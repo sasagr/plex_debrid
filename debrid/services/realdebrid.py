@@ -170,6 +170,9 @@ def download(element, stream=True, query='', force=False):
     if query == '':
         query = element.deviation()
     for release in cached[:]:
+        # releases RD's check() did not take (e.g. blocked filenames) are left for other debrid services
+        if not ('RD' in release.cached or 'RD' in release.maybe_cached) and not force:
+            continue
         try:  # if release matches query
             if regex.match(query, release.title,regex.I) or force:
                 time.sleep(5)  # RD throttles rapid adds (and may answer them with infringing_file)
@@ -273,7 +276,7 @@ def check(element, force=False):
     library = get_account_hashes()
     for release in element.Releases[:]:
         if any(blocked_filename_regex.search(n) for n in torrent_names(release)):
-            element.Releases.remove(release)
+            # not offered to RD (no 'RD' in cached/maybe_cached); other debrid services may still take it
             skipped += 1
             continue
         release.wanted_patterns = wanted_patterns

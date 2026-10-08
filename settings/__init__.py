@@ -405,7 +405,7 @@ settings_list = [
             'Tracker specific Debrid Services',
             [
                 'Please specify what tracker to look for by providing a regex match group: ',
-                'Please specify what debrid service should be used for a matching tracker (enter "RD","PM","AD","PUT", or "DL"): ',
+                'Please specify what debrid service should be used for a matching tracker (enter "RD","PM","AD","PUT","DL","TB" or "OC"): ',
             ],
             debrid, 'tracker',
             entry="rule",
@@ -423,6 +423,8 @@ settings_list = [
                 'Please open your favorite browser, log into your put.io account and open "http://put.io/link". Enter this code: ',
                 debrid.services.putio, 'api_key', hidden=True, oauth=True),
         setting('Torbox API Key', 'Please enter your Torbox API Key: ', debrid.services.torbox, 'api_key',
+                hidden=True),
+        setting('Offcloud API Key', 'Please enter your Offcloud API Key (offcloud.com dashboard > profile menu > API Key): ', debrid.services.offcloud, 'api_key',
                 hidden=True),
     ]
         ],

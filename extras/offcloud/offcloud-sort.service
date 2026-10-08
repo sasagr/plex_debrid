@@ -1,0 +1,14 @@
+[Unit]
+Description=Link Offcloud transfers into /mnt/offcloud-media/{movies,shows} for Plex
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+ExecStart=/usr/bin/python3 /home/pi/offcloud-mount/offcloud_sort.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

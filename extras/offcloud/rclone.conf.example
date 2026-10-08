@@ -1,0 +1,7 @@
+# copy to /home/pi/offcloud-mount/rclone.conf (chmod 600); pass = output of: rclone obscure <your Offcloud API key>
+[offcloud]
+type = webdav
+url = https://offcloud.com/webdav
+vendor = other
+user = you@example.com
+pass = <obscured API key>
