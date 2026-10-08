@@ -527,10 +527,12 @@ class library(classes.library):
                     delay = float(library.refresh.delay)
                 except:
                     ui_print("[plex] error: provided refresh delay is not a number! using default 2 second delay.")
-                time.sleep(delay)
-                ui_print('[plex] refreshing '+element_type+' library section/s: "' + '","'.join(names) + '"')
-                results = [None]
-                t = Thread(target=multi_init, args=(library.refresh.call, paths, results, 0))
+                # wait in the background so the main loop can go on with the next item meanwhile
+                def delayed_refresh():
+                    time.sleep(delay)
+                    ui_print('[plex] refreshing '+element_type+' library section/s: "' + '","'.join(names) + '"')
+                    multi_init(library.refresh.call, paths, [None], 0)
+                t = Thread(target=delayed_refresh)
                 t.start()
             except:
                 ui_print("[plex] error: couldnt refresh libraries. Make sure you have setup a plex user!")

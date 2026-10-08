@@ -16,7 +16,7 @@ MOUNT = '/mnt/offcloud'
 MEDIA = '/mnt/offcloud-media'
 PLEX_SECTIONS = {'movies': '6', 'shows': '7'}
 PLEX_DEBRID_SETTINGS = '/home/pi/PD2/plex_debrid/settings.json'
-INTERVAL = 15
+INTERVAL = 5
 
 SHOW = re.compile(r'(?<![a-z0-9])(s\d{1,2}[ ._-]?e\d{1,3}|s\d{1,2}(?![0-9])|season[ ._-]?\d{1,2}|\d{1,2}x\d{2})(?![0-9])', re.I)
 

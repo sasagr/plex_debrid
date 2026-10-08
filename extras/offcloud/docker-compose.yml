@@ -17,4 +17,4 @@ services:
       - apparmor:unconfined
     devices:
       - /dev/fuse:/dev/fuse:rwm
-    command: "mount offcloud: /data --read-only --allow-other --allow-non-empty --dir-cache-time 10s --vfs-cache-mode full --vfs-cache-max-size 10G --vfs-cache-max-age 2h"
+    command: "mount offcloud: /data --read-only --allow-other --allow-non-empty --dir-cache-time 5s --vfs-cache-mode full --vfs-cache-max-size 10G --vfs-cache-max-age 2h"
