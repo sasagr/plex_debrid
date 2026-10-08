@@ -274,7 +274,8 @@ class show(classes.media):
                     time.sleep(1)
             else:
                 time.sleep(1)
-        if not hasattr(self,"watchlistedAt"):
+        # Plex returns watchlistedAt as null for some items; treat that like a missing date so sorting works
+        if getattr(self, "watchlistedAt", None) is None:
             if hasattr(self,"addedAt"):
                 self.watchlistedAt = self.addedAt
             else:
@@ -297,7 +298,8 @@ class movie(classes.media):
         response = get(session, url)
         self.__dict__.update(response.MediaContainer.Metadata[0].__dict__)
         self.EID = setEID(self)
-        if not hasattr(self,"watchlistedAt"):
+        # Plex returns watchlistedAt as null for some items; treat that like a missing date so sorting works
+        if getattr(self, "watchlistedAt", None) is None:
             if hasattr(self,"addedAt"):
                 self.watchlistedAt = self.addedAt
             else:
