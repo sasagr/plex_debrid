@@ -86,7 +86,7 @@ def check(element, force=False):
             element.Releases.remove(release)
     activeservices = services.active
     if len(element.Releases) > 0:
-        ui_print("checking cache status for scraped releases on: [" + "],[".join(activeservices) + "] ...")
+        ui_print("checking scraped releases on: [" + "],[".join(activeservices) + "] ...")
         for service in services.get():
             service.check(element, force=force)
         ui_print("done")

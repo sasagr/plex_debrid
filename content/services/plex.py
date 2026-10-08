@@ -71,7 +71,7 @@ class watchlist(classes.watchlist):
                 tic = time.perf_counter()
                 while added < total:
                     total = 0
-                    url = 'https://discover.provider.plex.tv/library/sections/watchlist/all?X-Plex-Container-Size=200&X-Plex-Container-Start=' + str(added) + '&X-Plex-Token=' + user[1]
+                    url = 'https://discover.provider.plex.tv/library/sections/watchlist/all?X-Plex-Container-Size=100&X-Plex-Container-Start=' + str(added) + '&X-Plex-Token=' + user[1]
                     response = get(session, url)
                     if hasattr(response, 'MediaContainer'):
                         total = response.MediaContainer.totalSize

@@ -400,3 +400,6 @@ settings.json
 
 venv*/
 .idea/
+# local secrets and caches
+.env
+plex_metadata.pkl

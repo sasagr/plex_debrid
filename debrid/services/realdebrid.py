@@ -2,6 +2,8 @@
 from base import *
 from ui.ui_print import *
 import releases
+from urllib.parse import urlparse, parse_qs
+import base64
 
 # (required) Name of the Debrid service
 name = "Real Debrid"
@@ -24,6 +26,39 @@ errors = [
     [404," wrong parameter (invalid file id(s)) / unknown ressource (invalid id)"],
     [509," bandwidth limit exceeded"]
     ]
+# Real-Debrid refuses torrents whose name contains WEB-DL, WEB.x264, WEB.H264, HDTV.x264 or HDTV.XviD (case-sensitive).
+# Rule as of 2026-10-03, see https://github.com/elfhosted/litterbox - update this when RD changes it.
+# Indexers rewrite separators in titles and magnet names, so separators are matched loosely while case is kept.
+blocked_filename_regex = regex.compile(r'WEB[ ._-]?DL|WEB[ ._-]x264|WEB[ ._-]H264|HDTV[ ._-]x264|HDTV[ ._-]XviD')
+# hashes of the torrents in the RD account; a release with one of these hashes is cached for sure
+account_hashes = set()
+account_hashes_time = 0
+def get_account_hashes():
+    global account_hashes, account_hashes_time
+    if time.time() - account_hashes_time > 900:
+        try:
+            response = session.get('https://api.real-debrid.com/rest/1.0/torrents?limit=5000', headers={'authorization': 'Bearer ' + api_key}, timeout=30)
+            if response.status_code == 200:
+                account_hashes = {t['hash'].lower() for t in json.loads(response.content)}
+                account_hashes_time = time.time()
+        except Exception as e:
+            ui_print('[realdebrid] could not read account torrents: ' + str(e), ui_settings.debug)
+    return account_hashes
+def hex_hash(info_hash):
+    # magnets carry the info hash as 40 hex chars or 32 base32 chars; RD uses lowercase hex
+    if len(info_hash) == 32:
+        try:
+            return base64.b32decode(info_hash.upper()).hex()
+        except Exception:
+            return ''
+    return info_hash.lower()
+def torrent_names(release):
+    # the indexer title keeps the original case; the magnet dn is closer to the real torrent name but some indexers lowercase it
+    names = [release.title]
+    link = release.download[0] if hasattr(release, 'download') and len(release.download) > 0 else ''
+    if isinstance(link, str) and link.startswith('magnet:'):
+        names += parse_qs(urlparse(link).query).get('dn', [])
+    return names
 def setup(cls, new=False):
     from debrid.services import setup
     setup(cls,new)
@@ -137,7 +172,12 @@ def download(element, stream=True, query='', force=False):
     for release in cached[:]:
         try:  # if release matches query
             if regex.match(query, release.title,regex.I) or force:
+                time.sleep(5)  # RD throttles rapid adds (and may answer them with infringing_file)
                 response = post('https://api.real-debrid.com/rest/1.0/torrents/addMagnet', {'magnet': release.download[0]})
+                if hasattr(response, 'error') and response.error == 'too_many_requests':
+                    ui_print(f'[realdebrid]: rate limited, retrying {release.title} in 2s')
+                    time.sleep(2)
+                    response = post('https://api.real-debrid.com/rest/1.0/torrents/addMagnet', {'magnet': release.download[0]})
                 if hasattr(response, 'error') and response.error == 'infringing_file':
                     ui_print(f'[realdebrid]: torrent {release.title} marked as infringing... looking for another release.')
                     continue
@@ -145,7 +185,7 @@ def download(element, stream=True, query='', force=False):
                     ui_print(f'[realdebrid]: unable to add torrent {release.title} due to too many active downloads.')
                     continue
                 elif not hasattr(response, "id"):
-                    ui_print(f'[realdebrid]: unexpected error when adding torrent {release.title}.')
+                    ui_print(f'[realdebrid]: unexpected error when adding torrent {release.title}: ' + (f'{getattr(response, "error", "")} (code {getattr(response, "error_code", "?")})' if response is not None else 'no response'))
                     continue
                 time.sleep(1.0)
                 torrent_id = str(response.id)
@@ -228,7 +268,23 @@ def check(element, force=False):
     unwanted = releases.sort.unwanted
     wanted_patterns = list(zip(wanted, [regex.compile(r'(' + key + ')', regex.IGNORECASE) for key in wanted]))
     unwanted_patterns = list(zip(unwanted, [regex.compile(r'(' + key + ')', regex.IGNORECASE) for key in unwanted]))
+    skipped = 0
+    known_cached = 0
+    library = get_account_hashes()
     for release in element.Releases[:]:
+        if any(blocked_filename_regex.search(n) for n in torrent_names(release)):
+            element.Releases.remove(release)
+            skipped += 1
+            continue
         release.wanted_patterns = wanted_patterns
         release.unwanted_patterns = unwanted_patterns
-        release.maybe_cached += ['RD']  # we won't know if it's cached until we attempt to download it
+        if hex_hash(getattr(release, 'hash', '')) in library:
+            if 'RD' not in release.cached:
+                release.cached += ['RD']
+                known_cached += 1
+        else:
+            release.maybe_cached += ['RD']  # we won't know if it's cached until we attempt to download it
+    if known_cached > 0:
+        ui_print(f'[realdebrid] {known_cached} releases already in your RD account (cached)')
+    if skipped > 0:
+        ui_print(f'[realdebrid] skipped {skipped} releases matching RD filename filter')

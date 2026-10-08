@@ -920,7 +920,7 @@ class sort:
 
             def __init__(self, attribute, required, operator, value=None) -> None:
                 self.attribute = "cached"
-                self.weight = (required == "requirement")
+                self.weight = required
                 self.operator = operator
                 self.value = value
 
@@ -1691,8 +1691,9 @@ def print_releases(scraped_releases,uiprint=False):
         release.file = '+' + str(release.wanted) + '/-' + str(release.unwanted)
         if len(release.file) > longest_file:
             longest_file = len(release.file)
-        if len('/'.join(release.cached)) > longest_cached:
-            longest_cached = len('/'.join(release.cached))
+        release.printcached = '/'.join(release.cached + [s + '?' for s in release.maybe_cached if s not in release.cached])
+        if len(release.printcached) > longest_cached:
+            longest_cached = len(release.printcached)
         if len(release.title) > longest_title:
             longest_title = len(release.title)
         if len(str(release.printsize)) > longest_size:
@@ -1708,7 +1709,7 @@ def print_releases(scraped_releases,uiprint=False):
         title = "title: " + release.title + ' ' * (longest_title - len(release.title)) 
         size = " | size: " + str(release.printsize) + ' ' * (longest_size - len(str(release.printsize)))
         bitrate = " | bitrate: " + str(release.printbit) + ' ' * (longest_bitrate - len(str(release.printbit))) if hasattr(release,"bitrate") else ""
-        cached = " | cached: " + '/'.join(release.cached) + ' ' * (longest_cached - len('/'.join(release.cached)))
+        cached = " | cached: " + release.printcached + ' ' * (longest_cached - len(release.printcached))
         seeders = " | seeders: " + str(release.seeders) + ' ' * (longest_seeders - len(str(release.seeders)))
         files = " | files: " + release.file + ' ' * (longest_file - len(release.file)) 
         source = " | source: " + release.source
