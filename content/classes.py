@@ -575,6 +575,8 @@ class media:
                     # the release must start with the title, or name the right year after it (e.g. 'Www UIndex Org Sleuth 2007'),
                     # so unrelated releases that merely contain the title word are not matched
                     title_anchor = '(?=[^0-9a-z]*' + title + '|.*?' + title + '.*?(?<![0-9a-z])(?:' + '|'.join(allowed_years) + ')(?![0-9a-z]))'
+                    # a movie is never a TV episode: reject names like Show.S01E01 or Show S1E12
+                    title_anchor = '(?!.*?(?<![0-9a-z])s[0-9]{1,2}e[0-9]{1,3}(?![0-9]))' + title_anchor
                     if year != "":
                         return title_anchor + '(.*?)(' + title + wrong_year + ':?.*)\(?\[?(' + str(year) + ')?'
                     return title_anchor + '(.*?)(' + title + wrong_year + ':?.*)\(?\[?(' + str(self.year) + '|' + str(self.year - 1) + '|' + str(self.year + 1) + ')?'
