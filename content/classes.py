@@ -577,6 +577,9 @@ class media:
                     title_anchor = '(?=[^0-9a-z]*' + title + '|.*?' + title + '.*?(?<![0-9a-z])(?:' + '|'.join(allowed_years) + ')(?![0-9a-z]))'
                     # a movie is never a TV episode: reject names like Show.S01E01 or Show S1E12
                     title_anchor = '(?!.*?(?<![0-9a-z])s[0-9]{1,2}e[0-9]{1,3}(?![0-9]))' + title_anchor
+                    # adult releases are tagged XXX; skip them unless the film itself is called that (xXx)
+                    if not regex.search(r'(?<![0-9a-z])xxx(?![0-9a-z])', title, regex.I):
+                        title_anchor = '(?!.*?(?<![0-9a-z])xxx(?![0-9a-z]))' + title_anchor
                     if year != "":
                         return title_anchor + '(.*?)(' + title + wrong_year + ':?.*)\(?\[?(' + str(year) + ')?'
                     return title_anchor + '(.*?)(' + title + wrong_year + ':?.*)\(?\[?(' + str(self.year) + '|' + str(self.year - 1) + '|' + str(self.year + 1) + ')?'
@@ -982,6 +985,55 @@ class media:
                      str(e), debug=ui_settings.debug)
             return False
 
+    def proper_release_available(self):
+        # A movie whose digital release date (trakt) has not arrived yet is still treated as released when
+        # the indexers already carry proper digital or disc releases of it (never cam/telesync/screener copies).
+        # Checked at most once an hour per movie.
+        last_check, last_result = getattr(self, 'early_release_check', (0, False))
+        if time.time() - last_check < 3600:
+            return last_result
+        proper = regex.compile(r'(?<![a-z0-9])(web[ ._-]?dl|web[ ._-]?rip|web|blu[ ._-]?ray|bdrip|brrip|remux|amzn|dsnp|atvp|hmax)(?![a-z0-9])', regex.I)
+        not_proper = regex.compile(r'(?<![a-z0-9])(cam|hdcam|camrip|hqcam|ts|hdts|telesync|tc|hdtc|telecine|scr|screener|dvdscr|hdrip|pre[ ._-]?dvd)(?![a-z0-9])', regex.I)
+        # release names can't tell apart films with the same name and year (e.g. 'Runner' and 'The Runner', 2026),
+        # so only take this shortcut when trakt knows no other film by that name in that year
+        try:
+            import content.services.trakt as trakt
+            normalize = lambda t: regex.sub(r'[^a-z0-9]', '', regex.sub(r'^(the|a|an)\s+', '', str(t).lower()))
+            results, header = trakt.get('https://api.trakt.tv/search/movie?query=' + requests.utils.quote(self.title) + '&years=' + str(self.year) + '&extended=full')
+            namesakes = [r.movie for r in (results or []) if hasattr(r, 'movie') and normalize(r.movie.title) == normalize(self.title) and r.movie.year == self.year]
+            own_ids = [str(eid).split('://')[-1] for eid in getattr(self, 'EID', [])]
+            own = [m for m in namesakes if getattr(m.ids, 'imdb', None) in own_ids]
+            others = [m for m in namesakes if m not in own]
+            # obscure namesakes (few trakt votes compared to this film) don't produce releases that get mixed up
+            if len(own) > 0:
+                own_votes = getattr(own[0], 'votes', 0) or 0
+                clashes = [m for m in others if (getattr(m, 'votes', 0) or 0) >= max(50, own_votes * 0.1)]
+            else:
+                clashes = others if len(namesakes) > 1 else []
+            if len(clashes) > 0:
+                ui_print("item: '" + self.query() + "' shares its name with another " + str(self.year) + " film (" + ', '.join(m.title + ' ' + str(getattr(m.ids, 'imdb', '')) for m in clashes) + ") - waiting for its official digital release date.")
+                self.early_release_check = (time.time(), False)
+                return False
+        except Exception as e:
+            ui_print('early release namesake check error: ' + str(e), ui_settings.debug)
+        found = []
+        try:
+            deviation = self.deviation()
+            for release in scraper.scrape(self.query(), deviation):
+                if not regex.match(deviation, release.title, regex.I):
+                    continue
+                # judge only what follows the year, so words in the title itself (e.g. 'Charlotte's Web') don't count
+                tail = release.title.split(str(self.year), 1)[-1]
+                if proper.search(tail) and not not_proper.search(tail) and release.title not in found:
+                    found += [release.title]
+        except Exception as e:
+            ui_print('early release check error: ' + str(e), ui_settings.debug)
+        result = len(found) >= 2
+        if result:
+            ui_print("item: '" + self.query() + "' is not digitally released yet (trakt), but " + str(len(found)) + " proper releases exist (e.g. '" + found[0] + "') - downloading it now.")
+        self.early_release_check = (time.time(), result)
+        return result
+
     def available(self):
         import content.services.plex as plex
         import content.services.trakt as trakt
@@ -1032,6 +1084,9 @@ class media:
                     if match:
                         ui_print("item: '" + self.query() +
                                  "' seems to be released prior to its official release date and will be downloaded.")
+                        return True
+                    # digital date not reached (or unknown): accept it anyway if proper releases already exist
+                    if (release_date is None or datetime.datetime.utcnow() <= datetime.datetime.strptime(release_date, '%Y-%m-%d')) and self.proper_release_available():
                         return True
                     if release_date is None:
                         return False
