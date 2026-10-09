@@ -52,6 +52,26 @@ def hex_hash(info_hash):
         except Exception:
             return ''
     return info_hash.lower()
+# torrents RD answered with infringing_file are not offered to RD again for a few days (kept short: RD also
+# answers throttled adds that way, and its filter rules change)
+refused_file = 'rd_refused.json'
+refused_days = 3
+def load_refused():
+    try:
+        refused = json.load(open(refused_file))
+    except Exception:
+        return {}
+    return {h: t for h, t in refused.items() if time.time() - t < refused_days * 86400}
+def remember_refused(release):
+    info_hash = hex_hash(getattr(release, 'hash', ''))
+    if info_hash == '':
+        return
+    refused = load_refused()
+    refused[info_hash] = time.time()
+    try:
+        json.dump(refused, open(refused_file, 'w'))
+    except Exception as e:
+        ui_print('[realdebrid] could not save refused torrents: ' + str(e), ui_settings.debug)
 def torrent_names(release):
     # the indexer title keeps the original case; the magnet dn is closer to the real torrent name but some indexers lowercase it
     names = [release.title]
@@ -183,6 +203,7 @@ def download(element, stream=True, query='', force=False):
                     response = post('https://api.real-debrid.com/rest/1.0/torrents/addMagnet', {'magnet': release.download[0]})
                 if hasattr(response, 'error') and response.error == 'infringing_file':
                     ui_print(f'[realdebrid]: torrent {release.title} marked as infringing... looking for another release.')
+                    remember_refused(release)
                     continue
                 elif hasattr(response, 'error') and response.error == 'too_many_active_downloads':
                     ui_print(f'[realdebrid]: unable to add torrent {release.title} due to too many active downloads.')
@@ -273,11 +294,16 @@ def check(element, force=False):
     unwanted_patterns = list(zip(unwanted, [regex.compile(r'(' + key + ')', regex.IGNORECASE) for key in unwanted]))
     skipped = 0
     known_cached = 0
+    refused_before = 0
     library = get_account_hashes()
+    refused = load_refused()
     for release in element.Releases[:]:
         if any(blocked_filename_regex.search(n) for n in torrent_names(release)):
             # not offered to RD (no 'RD' in cached/maybe_cached); other debrid services may still take it
             skipped += 1
+            continue
+        if hex_hash(getattr(release, 'hash', '')) in refused:
+            refused_before += 1
             continue
         release.wanted_patterns = wanted_patterns
         release.unwanted_patterns = unwanted_patterns
@@ -291,3 +317,5 @@ def check(element, force=False):
         ui_print(f'[realdebrid] {known_cached} releases already in your RD account (cached)')
     if skipped > 0:
         ui_print(f'[realdebrid] skipped {skipped} releases matching RD filename filter')
+    if refused_before > 0:
+        ui_print(f'[realdebrid] skipped {refused_before} releases RD refused in the last {refused_days} days')

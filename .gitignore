@@ -403,3 +403,4 @@ venv*/
 # local secrets and caches
 .env
 plex_metadata.pkl
+rd_refused.json
