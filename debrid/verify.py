@@ -1,0 +1,161 @@
+#import modules
+from base import *
+from ui.ui_print import *
+import threading
+
+# Verify downloads by id: after a release was added to a debrid service, wait for Plex to identify the new
+# file and compare its plex:// guid with the guid of the watchlisted item (show level for episodes/seasons).
+# A wrong title is removed from the debrid service again and its hash is remembered for that item, so the
+# next search skips it.
+
+journal_file = 'downloads.jsonl'
+wrong_file = 'wrong_releases.json'
+check_every = 30          # seconds between checks
+give_up_after = 1800      # seconds: a download that never shows up in Plex is only logged
+_lock = threading.Lock()
+_thread = None
+
+
+def expected_guid(element):
+    # plex:// guid of what was asked for: the movie or show (episodes/seasons are checked at show level)
+    if element.type == 'episode':
+        return getattr(element, 'grandparentGuid', None)
+    if element.type == 'season':
+        return getattr(element, 'parentGuid', None)
+    return getattr(element, 'guid', None)
+
+
+def hex_hash(info_hash):
+    from debrid.services.realdebrid import hex_hash as to_hex
+    return to_hex(info_hash or '')
+
+
+def wrong_hashes(element):
+    guid = expected_guid(element)
+    if guid is None:
+        return set()
+    try:
+        return set(json.load(open(wrong_file)).get(guid, []))
+    except Exception:
+        return set()
+
+
+def record(element, release, service):
+    # called after a successful download; needs the service's id and folder name of the added torrent
+    guid = expected_guid(element)
+    if guid is None or not getattr(release, 'debrid_id', None) or not getattr(release, 'debrid_name', None):
+        return
+    entry = {'time': time.time(), 'service': service, 'id': release.debrid_id, 'name': release.debrid_name,
+             'hash': hex_hash(getattr(release, 'hash', '')), 'title': release.title, 'expected': guid,
+             'type': element.type, 'ratingKey': guid.split('/')[-1], 'query': element.query()}
+    with _lock:
+        with open(journal_file, 'a') as f:
+            f.write(json.dumps(entry) + '\n')
+    start()
+
+
+def start():
+    global _thread
+    if _thread is None or not _thread.is_alive():
+        _thread = threading.Thread(target=_loop, daemon=True)
+        _thread.start()
+
+
+def _loop():
+    while True:
+        time.sleep(check_every)
+        try:
+            if not _check():
+                return  # nothing pending: the next download starts the thread again
+        except Exception as e:
+            ui_print('[verify] error: ' + str(e), ui_settings.debug)
+
+
+def _library_items(since):
+    # recently added movies and episodes with their files and plex guids
+    import content.services.plex as plex
+    items = []
+    headers = {'Accept': 'application/json', 'X-Plex-Token': plex.users[0][1]}
+    for kind in ('1', '4'):
+        url = plex.library.url + '/library/all?type=' + kind + '&addedAt>>=' + str(int(since))
+        for item in requests.get(url, headers=headers, timeout=60).json()['MediaContainer'].get('Metadata', []):
+            guid = item.get('grandparentGuid') if kind == '4' else item.get('guid')
+            files = [part.get('file', '') for media in item.get('Media', []) for part in media.get('Part', [])]
+            items.append((guid, files, item.get('grandparentTitle') or item.get('title')))
+    return items
+
+
+def _remove(entry):
+    if entry['service'] == 'RD':
+        import debrid.services.realdebrid as rd
+        r = requests.delete('https://api.real-debrid.com/rest/1.0/torrents/delete/' + entry['id'],
+                            headers={'Authorization': 'Bearer ' + rd.api_key}, timeout=30)
+        return r.status_code in (200, 204)
+    if entry['service'] == 'OC':
+        import debrid.services.offcloud as oc
+        r = requests.get('https://offcloud.com/api/cloud/remove/' + entry['id'],
+                         headers={'Authorization': 'Bearer ' + oc.api_key, 'Accept': 'application/json'}, timeout=30)
+        return r.status_code == 200
+    return False
+
+
+def _rewatchlist(entry):
+    # movies are removed from the watchlist after downloading; put them back so they are searched again
+    import content.services.plex as plex
+    if entry['type'] != 'movie':
+        return
+    for user in plex.users:
+        requests.put('https://discover.provider.plex.tv/actions/addToWatchlist?ratingKey=' + entry['ratingKey'] +
+                     '&X-Plex-Token=' + user[1], timeout=30)
+
+
+def _check():
+    with _lock:
+        try:
+            pending = [json.loads(line) for line in open(journal_file) if line.strip()]
+        except FileNotFoundError:
+            return False
+    pending = [e for e in pending if not e.get('done')]
+    if len(pending) == 0:
+        return False
+    items = _library_items(min(e['time'] for e in pending) - 120)
+    for entry in pending:
+        found = [(guid, title) for guid, files, title in items if any('/' + entry['name'] + '/' in f or f.endswith('/' + entry['name']) for f in files)]
+        if len(found) == 0:
+            if time.time() - entry['time'] > give_up_after:
+                ui_print('[verify] could not verify (not in Plex after 30 min): ' + entry['title'])
+                entry['done'] = 'unverified'
+            continue
+        guid, title = found[0]
+        if guid == entry['expected']:
+            ui_print('[verify] ok: ' + entry['title'] + ' is "' + str(title) + '"')
+            entry['done'] = 'ok'
+            continue
+        removed = _remove(entry)
+        with _lock:
+            try:
+                wrong = json.load(open(wrong_file))
+            except Exception:
+                wrong = {}
+            if entry['hash'] and entry['hash'] not in wrong.get(entry['expected'], []):
+                wrong.setdefault(entry['expected'], []).append(entry['hash'])
+            json.dump(wrong, open(wrong_file, 'w'))
+        _rewatchlist(entry)
+        ui_print('[verify] wrong title: ' + entry['title'] + ' was identified by Plex as "' + str(title) + '" (' + str(guid) +
+                 '), not ' + entry['expected'] + ' - ' + ('removed from ' + entry['service'] if removed else 'could not remove from ' + entry['service']) +
+                 ', will search again without it')
+        entry['done'] = 'wrong'
+    with _lock:
+        try:
+            current = [json.loads(line) for line in open(journal_file) if line.strip()]
+        except FileNotFoundError:
+            current = []
+        status = {(e['service'], e['id']): e.get('done') for e in pending}
+        keep = []
+        for e in current:
+            e['done'] = e.get('done') or status.get((e['service'], e['id']))
+            if not e['done'] or time.time() - e['time'] < 86400:
+                keep.append(e)
+        with open(journal_file, 'w') as f:
+            f.write(''.join(json.dumps(e) + '\n' for e in keep))
+    return any(not e.get('done') for e in keep)

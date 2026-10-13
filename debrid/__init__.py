@@ -1,6 +1,7 @@
 from base import *
 #import child modules
 from debrid import services
+from debrid import verify
 from ui.ui_print import *
 
 tracker = []
@@ -22,6 +23,7 @@ def download(element, stream=True, query='', force=False):
             for service in services.get():
                 if service.short in release.cached + release.maybe_cached:
                     if service.download(element, stream=stream, query=query, force=force):
+                        verify.record(element, element.Releases[0], service.short)
                         downloaded = True
                         downloaded_files += element.Releases[0].files
                         if not hasattr(element,"existing_releases"):
@@ -84,6 +86,14 @@ def check(element, force=False):
         if release.checked:
             checked += [release]
             element.Releases.remove(release)
+    # releases Plex identified as a different title earlier are never offered again for this item
+    wrong = verify.wrong_hashes(element)
+    if len(wrong) > 0:
+        skipped = [r for r in element.Releases if verify.hex_hash(getattr(r, 'hash', '')) in wrong]
+        for release in skipped:
+            element.Releases.remove(release)
+        if len(skipped) > 0:
+            ui_print('[verify] skipped ' + str(len(skipped)) + ' releases identified as a different title before')
     activeservices = services.active
     if len(element.Releases) > 0:
         ui_print("checking scraped releases on: [" + "],[".join(activeservices) + "] ...")

@@ -131,6 +131,8 @@ def download(element, stream=True, query='', force=False):
             existing = [item for item in history() if release_hash and release_hash in str(item.get('originalLink', '')).lower()]
             if len(existing) > 0 and existing[0].get('status') == 'downloaded':
                 ui_print('[offcloud] release already in your offcloud cloud: ' + release.title)
+                release.debrid_id = existing[0].get('requestId')
+                release.debrid_name = existing[0].get('fileName')
                 return True
             response = request('POST', '/api/cloud', {'url': release.download[0]})
             if not isinstance(response, dict) or 'requestId' not in response:
@@ -142,6 +144,8 @@ def download(element, stream=True, query='', force=False):
                 status = wait_until_downloaded(response['requestId'])
             if status == 'downloaded':
                 ui_print('[offcloud] added cached release: ' + release.title)
+                release.debrid_id = response['requestId']  # for checking afterwards that Plex identifies it as the right title
+                release.debrid_name = response.get('fileName')
                 return True
             ui_print(f'[offcloud]: {release.title} is in status [{status}] after adding - looking for another release.')
         except Exception as e:

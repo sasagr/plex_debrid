@@ -404,3 +404,5 @@ venv*/
 .env
 plex_metadata.pkl
 rd_refused.json
+downloads.jsonl
+wrong_releases.json

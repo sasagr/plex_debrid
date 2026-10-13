@@ -258,6 +258,8 @@ def download(element, stream=True, query='', force=False):
                             continue
                     if response.status == 'downloaded':
                         ui_print('[realdebrid] added cached release: ' + release.title)
+                        release.debrid_id = torrent_id  # for checking afterwards that Plex identifies it as the right title
+                        release.debrid_name = response.filename
                         if actual_title != "":
                             release.title = actual_title
                         return True
