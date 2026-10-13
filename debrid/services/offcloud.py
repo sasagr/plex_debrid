@@ -15,6 +15,11 @@ base_url = 'https://offcloud.com'
 cache_batch = 50
 # seconds to wait for a cached transfer to reach "downloaded"
 download_wait = 30
+# fake releases (e.g. a ".exe" named like a MeGusta WEB release) must never be added:
+# a torrent needs a real video file and must not contain programs, scripts or archives
+video_extensions = ('.mkv', '.mp4', '.avi', '.m4v', '.mov', '.ts', '.m2ts', '.mts', '.wmv', '.mpg', '.mpeg', '.webm', '.flv', '.vob', '.ogv')
+blocked_extensions = ('.exe', '.scr', '.bat', '.cmd', '.com', '.msi', '.lnk', '.vbs', '.js', '.jar', '.apk', '.ps1', '.zip', '.rar', '.7z')
+min_video_size = 50 * 1000 * 1000
 
 
 def setup(cls, new=False):
@@ -172,6 +177,12 @@ def check(element, force=False):
             continue
         for release, info in zip(batch, response):
             if not isinstance(info, dict) or not info.get('cached'):
+                continue
+            names = [(str(f.get('filename', '')).lower(), f.get('size', 0) or 0) for f in info.get('files', [])]
+            has_video = any(n.endswith(video_extensions) and s >= min_video_size for n, s in names)
+            if not has_video or any(n.endswith(blocked_extensions) for n, s in names):
+                ui_print('[offcloud] skipping ' + release.title + ': no real video file or contains programs/archives (' +
+                         ', '.join(n for n, s in names[:3]) + ')')
                 continue
             version_files = []
             for index, file_ in enumerate(info.get('files', [])):

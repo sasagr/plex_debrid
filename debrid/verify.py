@@ -85,6 +85,42 @@ def _library_items(since):
     return items
 
 
+video_extensions = ('.mkv', '.mp4', '.avi', '.m4v', '.mov', '.ts', '.m2ts', '.mts', '.wmv', '.mpg', '.mpeg', '.webm', '.flv', '.vob', '.ogv')
+mounts = {'OC': '/mnt/offcloud', 'RD': '/mnt/zurg/__all__'}
+
+
+def _has_video(entry):
+    # True/False when the download's folder (or single file) is on the mount, None while it isn't listed yet
+    path = os.path.join(mounts.get(entry['service'], '/nonexistent'), entry['name'])
+    try:
+        if os.path.isfile(path):
+            return path.lower().endswith(video_extensions)
+        if not os.path.isdir(path):
+            return None
+        for root, dirs, files in os.walk(path):
+            if any(f.lower().endswith(video_extensions) for f in files):
+                return True
+        return False
+    except OSError:
+        return None
+
+
+def _reject(entry, reason):
+    removed = _remove(entry)
+    with _lock:
+        try:
+            wrong = json.load(open(wrong_file))
+        except Exception:
+            wrong = {}
+        if entry['hash'] and entry['hash'] not in wrong.get(entry['expected'], []):
+            wrong.setdefault(entry['expected'], []).append(entry['hash'])
+        json.dump(wrong, open(wrong_file, 'w'))
+    _rewatchlist(entry)
+    ui_print('[verify] ' + reason + ' - ' + ('removed from ' + entry['service'] if removed else 'could not remove from ' + entry['service']) +
+             ', will search again without it')
+    entry['done'] = 'wrong'
+
+
 def _remove(entry):
     if entry['service'] == 'RD':
         import debrid.services.realdebrid as rd
@@ -122,6 +158,9 @@ def _check():
     for entry in pending:
         found = [(guid, title) for guid, files, title in items if any('/' + entry['name'] + '/' in f or f.endswith('/' + entry['name']) for f in files)]
         if len(found) == 0:
+            if time.time() - entry['time'] > 60 and _has_video(entry) is False:
+                _reject(entry, 'no video file in ' + entry['title'] + ' (fake release?)')
+                continue
             if time.time() - entry['time'] > give_up_after:
                 ui_print('[verify] could not verify (not in Plex after 30 min): ' + entry['title'])
                 entry['done'] = 'unverified'
@@ -131,20 +170,7 @@ def _check():
             ui_print('[verify] ok: ' + entry['title'] + ' is "' + str(title) + '"')
             entry['done'] = 'ok'
             continue
-        removed = _remove(entry)
-        with _lock:
-            try:
-                wrong = json.load(open(wrong_file))
-            except Exception:
-                wrong = {}
-            if entry['hash'] and entry['hash'] not in wrong.get(entry['expected'], []):
-                wrong.setdefault(entry['expected'], []).append(entry['hash'])
-            json.dump(wrong, open(wrong_file, 'w'))
-        _rewatchlist(entry)
-        ui_print('[verify] wrong title: ' + entry['title'] + ' was identified by Plex as "' + str(title) + '" (' + str(guid) +
-                 '), not ' + entry['expected'] + ' - ' + ('removed from ' + entry['service'] if removed else 'could not remove from ' + entry['service']) +
-                 ', will search again without it')
-        entry['done'] = 'wrong'
+        _reject(entry, 'wrong title: ' + entry['title'] + ' was identified by Plex as "' + str(title) + '" (' + str(guid) + '), not ' + entry['expected'])
     with _lock:
         try:
             current = [json.loads(line) for line in open(journal_file) if line.strip()]
