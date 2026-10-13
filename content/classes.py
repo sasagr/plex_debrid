@@ -5,6 +5,10 @@ import debrid
 import scraper
 from ui.ui_print import *
 
+# what may precede a show title in a release name: [tags], site prefixes like 'www.UIndex.org - ', punctuation.
+# Anything else (e.g. 'The.Wheel.of.Time' when looking for 'Time') does not match.
+release_prefix = r'((?:\[[^\]]*\]|www\.[a-z0-9-]+(?:\.[a-z0-9-]+)+|[^0-9a-z])*?)'
+
 imdb_scraped = False
 
 
@@ -588,10 +592,10 @@ class media:
                     return '(.*?)(' + title + ')'
             elif self.type == 'show':
                 title = title.replace('.' + str(self.year), '')
-                return '(.*?)(' + title + ':?.)(series.|[^A-Za-z0-9]+)?((\(?' + str(self.year) + '\)?.)|(complete.)|(seasons?.[0-9]+.[0-9]?[0-9]?.?)|(S[0-9]+.S?[0-9]?[0-9]?.?)|(S[0-9]+E[0-9]+))'
+                return release_prefix + '(' + title + ':?.)(series.|[^A-Za-z0-9]+)?((\(?' + str(self.year) + '\)?.)|(complete.)|(seasons?.[0-9]+.[0-9]?[0-9]?.?)|(S[0-9]+.S?[0-9]?[0-9]?.?)|(S[0-9]+E[0-9]+))'
             elif self.type == 'season':
                 title = title.replace('.' + str(self.parentYear), '')
-                return '(.*?)(' + title + ':?.)(series.|[^A-Za-z0-9]+)?(\(?' + str(self.parentYear) + '\)?.)?(season.' + str(self.index) + '[^0-9e]|season.' + str("{:02d}".format(self.index)) + '[^0-9e]|S' + str("{:02d}".format(self.index)) + '[^0-9e])'
+                return release_prefix + '(' + title + ':?.)(series.|[^A-Za-z0-9]+)?(\(?' + str(self.parentYear) + '\)?.)?(season.' + str(self.index) + '[^0-9e]|season.' + str("{:02d}".format(self.index)) + '[^0-9e]|S' + str("{:02d}".format(self.index)) + '[^0-9e])'
             elif self.type == 'episode':
                 title = title.replace('.' + str(self.grandparentYear), '')
                 try:
@@ -605,9 +609,9 @@ class media:
                     airdate_formats += [airdate.strftime(
                         '(%m|%b).*%d.*(%Y|%y)').replace("0", "0?")]
                     airdate_formats = "(" + ")|(".join(airdate_formats) + ")"
-                    return '(.*?)(' + title + ':?.)(series.)?(\(?' + str(self.grandparentYear) + '\)?.)?(S' + str("{:02d}".format(self.parentIndex)) + 'E' + str("{:02d}".format(self.index)) + '.|'+airdate_formats+')'
+                    return release_prefix + '(' + title + ':?.)(series.)?(\(?' + str(self.grandparentYear) + '\)?.)?(S' + str("{:02d}".format(self.parentIndex)) + 'E' + str("{:02d}".format(self.index)) + '.|'+airdate_formats+')'
                 except:
-                    return '(.*?)(' + title + ':?.)(series.)?(\(?' + str(self.grandparentYear) + '\)?.)?(S' + str("{:02d}".format(self.parentIndex)) + 'E' + str("{:02d}".format(self.index)) + '.)'
+                    return release_prefix + '(' + title + ':?.)(series.)?(\(?' + str(self.grandparentYear) + '\)?.)?(S' + str("{:02d}".format(self.parentIndex)) + 'E' + str("{:02d}".format(self.index)) + '.)'
         else:
             if hasattr(self, 'alternate_titles'):
                 title = '(' + '|'.join(self.alternate_titles) + ')'
