@@ -1,0 +1,11 @@
+# /etc/systemd/system/offcloud-repair.service
+[Unit]
+Description=Re-submit Offcloud transfers whose files have gone or stopped serving
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=pi
+WorkingDirectory=/home/pi/offcloud-mount
+ExecStart=/usr/bin/python3 /home/pi/offcloud-mount/offcloud_repair.py --once

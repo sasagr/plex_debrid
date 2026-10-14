@@ -4,6 +4,11 @@ services:
     image: rclone/rclone:latest
     container_name: rclone-offcloud
     restart: unless-stopped
+    # Docker's embedded resolver returned SERVFAIL for offcloud.com for ~7 hours on both
+    # 10 and 12 Oct 2026, which wedges the mount with EIO; resolve directly instead.
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
     environment:
       TZ: Asia/Nicosia
       PUID: 1000
