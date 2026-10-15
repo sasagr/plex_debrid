@@ -85,6 +85,14 @@ def _library_items(since):
     return items
 
 
+# the Offcloud sorter names movie folders without site prefixes like 'www.UIndex.org - '
+site_prefix = regex.compile(r'^(?:www\.[a-z0-9.-]+\s*-\s*|\[[^\]]*\]\s*)+', regex.I)
+
+
+def clean_name(name):
+    return site_prefix.sub('', name).strip() or name
+
+
 video_extensions = ('.mkv', '.mp4', '.avi', '.m4v', '.mov', '.ts', '.m2ts', '.mts', '.wmv', '.mpg', '.mpeg', '.webm', '.flv', '.vob', '.ogv')
 mounts = {'OC': '/mnt/offcloud', 'RD': '/mnt/zurg/__all__'}
 
@@ -156,7 +164,8 @@ def _check():
         return False
     items = _library_items(min(e['time'] for e in pending) - 120)
     for entry in pending:
-        found = [(guid, title) for guid, files, title in items if any('/' + entry['name'] + '/' in f or f.endswith('/' + entry['name']) for f in files)]
+        names = {entry['name'], clean_name(entry['name'])}
+        found = [(guid, title) for guid, files, title in items if any('/' + n + '/' in f or f.endswith('/' + n) for n in names for f in files)]
         if len(found) == 0:
             if time.time() - entry['time'] > 60 and _has_video(entry) is False:
                 _reject(entry, 'no video file in ' + entry['title'] + ' (fake release?)')
@@ -165,11 +174,20 @@ def _check():
                 ui_print('[verify] could not verify (not in Plex after 30 min): ' + entry['title'])
                 entry['done'] = 'unverified'
             continue
-        guid, title = found[0]
-        if guid == entry['expected']:
-            ui_print('[verify] ok: ' + entry['title'] + ' is "' + str(title) + '"')
+        if any(guid == entry['expected'] for guid, title in found):
+            ui_print('[verify] ok: ' + entry['title'] + ' is "' + str([t for g, t in found if g == entry['expected']][0]) + '"')
             entry['done'] = 'ok'
             continue
+        identified = [(g, t) for g, t in found if str(g).startswith('plex://')]
+        if len(identified) == 0:
+            # Plex hasn't identified it (yet): that is no proof of a wrong title, keep waiting
+            if time.time() - entry['time'] > give_up_after:
+                ui_print('[verify] could not verify (Plex did not identify it): ' + entry['title'])
+                entry['done'] = 'unverified'
+            continue
+        if time.time() - entry['time'] < 180:
+            continue  # Plex sometimes refines its first match within a minute or two
+        guid, title = identified[0]
         _reject(entry, 'wrong title: ' + entry['title'] + ' was identified by Plex as "' + str(title) + '" (' + str(guid) + '), not ' + entry['expected'])
     with _lock:
         try:
