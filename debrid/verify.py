@@ -40,6 +40,20 @@ def wrong_hashes(element):
         return set()
 
 
+def required_resolution(element):
+    # the resolution the downloaded version asks for ("1080p SDR" -> 1080), None if it has no exact requirement
+    for rule in getattr(getattr(element, 'version', None), 'rules', []):
+        if rule[0] == 'resolution' and rule[1] == 'requirement' and rule[2] == '==' and str(rule[3]).isdigit():
+            return int(rule[3])
+    return None
+
+
+def plex_resolution(value):
+    # Plex's videoResolution: '4k', '2k' (wide 1080p), '1080', '720', '480', 'sd'; None/'' when unknown (e.g. 1080i)
+    value = str(value or '').lower()
+    return {'4k': 2160, '2k': 1080, 'sd': 480}.get(value, int(value) if value.isdigit() else None)
+
+
 def record(element, release, service):
     # called after a successful download; needs the service's id and folder name of the added torrent
     guid = expected_guid(element)
@@ -47,7 +61,8 @@ def record(element, release, service):
         return
     entry = {'time': time.time(), 'service': service, 'id': release.debrid_id, 'name': release.debrid_name,
              'hash': hex_hash(getattr(release, 'hash', '')), 'title': release.title, 'expected': guid,
-             'type': element.type, 'ratingKey': guid.split('/')[-1], 'query': element.query()}
+             'type': element.type, 'ratingKey': guid.split('/')[-1], 'query': element.query(),
+             'version': getattr(getattr(element, 'version', None), 'name', ''), 'resolution': required_resolution(element)}
     with _lock:
         with open(journal_file, 'a') as f:
             f.write(json.dumps(entry) + '\n')
@@ -80,7 +95,7 @@ def _library_items(since):
         url = plex.library.url + '/library/all?type=' + kind + '&addedAt>>=' + str(int(since))
         for item in requests.get(url, headers=headers, timeout=60).json()['MediaContainer'].get('Metadata', []):
             guid = item.get('grandparentGuid') if kind == '4' else item.get('guid')
-            files = [part.get('file', '') for media in item.get('Media', []) for part in media.get('Part', [])]
+            files = [(part.get('file', ''), media.get('videoResolution')) for media in item.get('Media', []) for part in media.get('Part', [])]
             items.append((guid, files, item.get('grandparentTitle') or item.get('title')))
     return items
 
@@ -165,7 +180,9 @@ def _check():
     items = _library_items(min(e['time'] for e in pending) - 120)
     for entry in pending:
         names = {entry['name'], clean_name(entry['name'])}
-        found = [(guid, title) for guid, files, title in items if any('/' + n + '/' in f or f.endswith('/' + n) for n in names for f in files)]
+        mine = lambda f: any('/' + n + '/' in f or f.endswith('/' + n) for n in names)
+        found = [(guid, title) for guid, files, title in items if any(mine(f) for f, r in files)]
+        resolutions = [plex_resolution(r) for guid, files, title in items for f, r in files if mine(f)]
         if len(found) == 0:
             if time.time() - entry['time'] > 60 and _has_video(entry) is False:
                 _reject(entry, 'no video file in ' + entry['title'] + ' (fake release?)')
@@ -175,6 +192,13 @@ def _check():
                 entry['done'] = 'unverified'
             continue
         if any(guid == entry['expected'] for guid, title in found):
+            # right title: an automatic download must also have the resolution its version was downloaded for
+            known = [r for r in resolutions if r is not None]
+            want = entry.get('resolution')
+            if want and len(known) > 0 and want not in known:
+                _reject(entry, 'wrong resolution: ' + entry['title'] + ' is ' + str(max(known)) + 'p in Plex, version "' +
+                        entry.get('version', '') + '" needs ' + str(want) + 'p')
+                continue
             ui_print('[verify] ok: ' + entry['title'] + ' is "' + str([t for g, t in found if g == entry['expected']][0]) + '"')
             entry['done'] = 'ok'
             continue

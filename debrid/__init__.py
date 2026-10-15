@@ -88,6 +88,7 @@ def check(element, force=False):
             checked += [release]
             element.Releases.remove(release)
     # releases Plex identified as a different title earlier are never offered again for this item
+    verify.start()  # picks up downloads recorded before a restart (stops by itself when nothing is pending)
     wrong = verify.wrong_hashes(element) if not force else set()
     if len(wrong) > 0:
         skipped = [r for r in element.Releases if verify.hex_hash(getattr(r, 'hash', '')) in wrong]
