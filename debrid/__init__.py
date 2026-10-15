@@ -23,7 +23,8 @@ def download(element, stream=True, query='', force=False):
             for service in services.get():
                 if service.short in release.cached + release.maybe_cached:
                     if service.download(element, stream=stream, query=query, force=force):
-                        verify.record(element, element.Releases[0], service.short)
+                        if not force:  # only automatic downloads are checked; manual picks (scraper menu) are never touched
+                            verify.record(element, element.Releases[0], service.short)
                         downloaded = True
                         downloaded_files += element.Releases[0].files
                         if not hasattr(element,"existing_releases"):
@@ -87,7 +88,7 @@ def check(element, force=False):
             checked += [release]
             element.Releases.remove(release)
     # releases Plex identified as a different title earlier are never offered again for this item
-    wrong = verify.wrong_hashes(element)
+    wrong = verify.wrong_hashes(element) if not force else set()
     if len(wrong) > 0:
         skipped = [r for r in element.Releases if verify.hex_hash(getattr(r, 'hash', '')) in wrong]
         for release in skipped:

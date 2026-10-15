@@ -752,6 +752,21 @@ class media:
                         break
                 if not missing:
                     versions.remove(version)
+        # versions whose resolution Plex already has for this movie/episode are not needed: this also works after a
+        # restart, when the in-session record above is empty (e.g. a 1080p copy that expired while the 4K one stayed)
+        if self.type in ['movie', 'episode'] and library()[0].name == 'Plex Library':
+            self.set_file_names()
+            # Plex calls wide 1080p encodes '2k' and 2160p '4k'
+            plex_res = {'2k': 1080, '4k': 2160}
+            have = [plex_res.get(m.group(1).lower(), int(m.group(1)) if m.group(1).isdigit() else 0) for m in (regex.match(r'^\((\d+|2k|4k)p\)', f, regex.I) for f in self.existing_releases) if m]
+            for version in versions[:]:
+                for rule in version.rules:
+                    if rule[0] == 'resolution' and rule[1] == 'requirement' and str(rule[3]).isdigit():
+                        want = int(rule[3])
+                        ok = {'==': lambda h: h == want, '>=': lambda h: h >= want, '<=': lambda h: h <= want}.get(rule[2])
+                        if ok is not None and any(ok(h) for h in have):
+                            versions.remove(version)
+                        break
         if quick:
             return versions
         # If Trakt is the  collection service, the upgrading of collected content is not possible, since no record of the downloaded file names is kept. return the missing versions from this session.
