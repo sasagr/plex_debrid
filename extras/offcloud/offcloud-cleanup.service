@@ -1,0 +1,9 @@
+[Unit]
+Description=Delete Offcloud TV episodes 48h after they were watched in Plex
+After=network-online.target plexmediaserver.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=pi
+ExecStart=/usr/bin/python3 /home/pi/offcloud-mount/offcloud_cleanup.py --apply
