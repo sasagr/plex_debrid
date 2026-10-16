@@ -17,12 +17,15 @@ _thread = None
 
 
 def expected_guid(element):
-    # plex:// guid of what was asked for: the movie or show (episodes/seasons are checked at show level)
+    # plex:// guid of what was asked for: the movie or show (episodes/seasons are checked at show level).
+    # Items that only carry other ids (e.g. a number from trakt) can't be checked against Plex: None
     if element.type == 'episode':
-        return getattr(element, 'grandparentGuid', None)
-    if element.type == 'season':
-        return getattr(element, 'parentGuid', None)
-    return getattr(element, 'guid', None)
+        guid = getattr(element, 'grandparentGuid', None)
+    elif element.type == 'season':
+        guid = getattr(element, 'parentGuid', None)
+    else:
+        guid = getattr(element, 'guid', None)
+    return guid if isinstance(guid, str) and guid.startswith('plex://') else None
 
 
 def hex_hash(info_hash):
