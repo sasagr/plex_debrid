@@ -403,6 +403,17 @@ def unique(lst):
             unique_objects.append(obj)
     return unique_objects
 
+def safe_download(element, library):
+    # one item failing (e.g. unexpected metadata) must not stop the automation thread: in service mode that
+    # drops plex_debrid to the menu, which fails without a terminal, and the service restarts in a loop
+    try:
+        element.download(library=library)
+    except Exception as e:
+        import traceback
+        ui_print('error: skipping ' + str(getattr(element, 'query', lambda: element)()) + ' after an unexpected error: ' + repr(e))
+        ui_print(traceback.format_exc(), debug=ui_settings.debug)
+
+
 def threaded(stop):
     ui_cls()
     if service_mode == True:
@@ -430,7 +441,7 @@ def threaded(stop):
         t0 = time.time()
         for element in unique(watchlists):
             if hasattr(element, 'download'):
-                element.download(library=library)
+                safe_download(element, library)
                 t1 = time.time()
                 #if more than 5 seconds have passed, check for newly watchlisted content
                 if t1-t0 >= 5:
@@ -450,7 +461,7 @@ def threaded(stop):
                         ui_print('checking new content ...')
                         for element in new_watchlists:
                             if hasattr(element, 'download'):
-                                element.download(library=library)
+                                safe_download(element, library)
                         ui_print('done')
                     t0 = time.time()
         ui_print('done')
@@ -476,7 +487,7 @@ def threaded(stop):
                                     newly_added = False
                                     break
                     if newly_added:
-                        element.download(library=library)
+                        safe_download(element, library)
             ui_print('done')
         elif timeout_counter >= regular_check:
             # get entire plex_watchlist
@@ -497,7 +508,7 @@ def threaded(stop):
             t0 = time.time()
             for element in unique(watchlists):
                 if hasattr(element, 'download'):
-                    element.download(library=library)
+                    safe_download(element, library)
                     t1 = time.time()
                     #if more than 5 seconds have passed, check for newly watchlisted content
                     if t1-t0 >= 5:
@@ -517,7 +528,7 @@ def threaded(stop):
                             ui_print('checking new content ...')
                             for element in new_watchlists:
                                 if hasattr(element, 'download'):
-                                    element.download(library=library)
+                                    safe_download(element, library)
                             ui_print('done')
                         t0 = time.time()
             ui_print('done')
