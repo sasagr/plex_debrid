@@ -1,6 +1,6 @@
 # Setup overview: plex_debrid on the Raspberry Pi
 
-State as of 16 Oct 2026. Branch `offcloud` of `sasagr/plex_debrid`.
+State as of 18 Oct 2026. Branch `offcloud` of `sasagr/plex_debrid`.
 
 ## How a new title gets into Plex
 
@@ -21,6 +21,7 @@ Plex/Trakt watchlist ─▶ plex_debrid ─▶ Jackett (+FlareSolverr) search
 | **Plex Media Server** (`plexmediaserver`) | The library: Movies and TV Shows, each reading both mounts. | Always on, starts at boot | Plex log |
 | **offcloud-sort** | Links each Offcloud transfer into `/mnt/offcloud-media/movies` or `/shows` (every 5 s); movies get only their main video and a folder name without site prefixes; removes links of transfers that are gone; triggers Plex scans both ways. | Always on, starts at boot | `journalctl -u offcloud-sort` |
 | **offcloud-cleanup** (timer) | Hourly: deletes Offcloud **episodes** that are watched (any watched mark) and whose last watch is more than 48 h ago. Never movies; names in `keep.txt` are protected. | Timer, starts at boot | `journalctl -u offcloud-cleanup` |
+| **ptsync-progress-cleanup** (timer) | Every 30 min (:05 and :35, after the PlexTraktSync sync): clears Plex play progress that Trakt no longer has, since PlexTraktSync only ever adds progress. Watched items keep their watched mark; unwatched ones go back to not started. Skips anything played in Plex in the last 2 h; never writes to Trakt. Script in `/home/pi/ptsync`. | Timer, starts at boot | `journalctl -u ptsync-progress-cleanup` |
 | **offcloud-repair** (timer) | Hourly: re-submits Offcloud transfers that vanished or stopped serving (only cached, video-only, never ones in `wrong_releases.json`); restarts the Offcloud mount if it lists nothing. | Timer, starts at boot | `journalctl -u offcloud-repair` |
 
 ## 2. Docker containers (all `restart: unless-stopped`)
@@ -52,6 +53,7 @@ Plex/Trakt watchlist ─▶ plex_debrid ─▶ Jackett (+FlareSolverr) search
 | Offcloud email + key | `~/.config/offcloud/credentials`, and `rclone.conf` in `/home/pi/offcloud-mount` |
 | plex_debrid's working files | `downloads.jsonl`, `wrong_releases.json`, `rd_refused.json` in the plex_debrid folder |
 | Offcloud scripts and units (copies) | `extras/offcloud/` in this repository |
+| Plex progress cleanup script and units (copies) | `extras/ptsync/` in this repository |
 
 ## 5. Plex, network and Pi settings that matter
 

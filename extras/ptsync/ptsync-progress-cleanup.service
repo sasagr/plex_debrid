@@ -1,0 +1,9 @@
+[Unit]
+Description=Clear stale Plex play progress that Trakt no longer has
+After=network-online.target plexmediaserver.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=pi
+ExecStart=/usr/bin/python3 -I /home/pi/ptsync/progress_cleanup.py --apply
