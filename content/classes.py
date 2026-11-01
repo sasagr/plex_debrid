@@ -1012,7 +1012,7 @@ class media:
         if time.time() - last_check < 3600:
             return last_result
         proper = regex.compile(r'(?<![a-z0-9])(web[ ._-]?dl|web[ ._-]?rip|web|blu[ ._-]?ray|bdrip|brrip|remux|amzn|dsnp|atvp|hmax)(?![a-z0-9])', regex.I)
-        not_proper = regex.compile(r'(?<![a-z0-9])(cam|hdcam|camrip|hqcam|ts|hdts|telesync|tc|hdtc|telecine|scr|screener|dvdscr|hdrip|pre[ ._-]?dvd)(?![a-z0-9])', regex.I)
+        not_proper = regex.compile(r'(?<![a-z0-9])(cam|hdcam|camrip|hqcam|ts|hdts|telesync|tc|hdtc|telecine|scr|screener|dvdscr|hdrip|pre[ ._-]?dvd|pre|hq[ ._-]?pre)(?![a-z0-9])', regex.I)
         # release names can't tell apart films with the same name and year (e.g. 'Runner' and 'The Runner', 2026),
         # so only take this shortcut when trakt knows no other film by that name in that year
         try:
@@ -1038,13 +1038,23 @@ class media:
         found = []
         try:
             deviation = self.deviation()
+            candidates = []
             for release in scraper.scrape(self.query(), deviation):
                 if not regex.match(deviation, release.title, regex.I):
                     continue
                 # judge only what follows the year, so words in the title itself (e.g. 'Charlotte's Web') don't count
                 tail = release.title.split(str(self.year), 1)[-1]
-                if proper.search(tail) and not not_proper.search(tail) and release.title not in found:
-                    found += [release.title]
+                if proper.search(tail) and not not_proper.search(tail) and release.title not in [c.title for c in candidates]:
+                    candidates += [release]
+            # fakes carry proper-looking names (a ".exe" posing as a WEB-DL), so with Offcloud active only releases
+            # it holds as a real video count; without Offcloud there is no file list to check, so names decide
+            import debrid.services
+            if 'Offcloud' in debrid.services.active:
+                import debrid.services.offcloud as offcloud
+                checked = offcloud.clean_cached(candidates)
+                ui_print("early release check for '" + self.query() + "': " + str(len(checked)) + ' of ' + str(len(candidates)) + ' proper-looking releases are real videos on offcloud', ui_settings.debug)
+                candidates = checked
+            found = [c.title for c in candidates]
         except Exception as e:
             ui_print('early release check error: ' + str(e), ui_settings.debug)
         result = len(found) >= 2

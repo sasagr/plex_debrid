@@ -158,6 +158,28 @@ def download(element, stream=True, query='', force=False):
     return False
 
 
+# fake releases: shared by check() and the early release check in content/classes.py
+def is_clean(info):
+    """True when a cache/info entry is cached and holds a real video file and no programs or archives."""
+    if not isinstance(info, dict) or not info.get('cached'):
+        return False
+    names = [(str(f.get('filename', '')).lower(), f.get('size', 0) or 0) for f in info.get('files', [])]
+    has_video = any(n.endswith(video_extensions) and s >= min_video_size for n, s in names)
+    return has_video and not any(n.endswith(blocked_extensions) for n, s in names)
+
+
+def clean_cached(release_list):
+    """The releases from release_list that Offcloud has cached as a real video (no fakes); [] on any error."""
+    candidates = [release for release in release_list if is_magnet(release)]
+    clean = []
+    for offset in range(0, len(candidates), cache_batch):
+        batch = candidates[offset:offset + cache_batch]
+        response = request('POST', '/api/cache/info', {'urls': [release.download[0] for release in batch], 'includeFiles': True})
+        if isinstance(response, list) and len(response) == len(batch):
+            clean += [release for release, info in zip(batch, response) if is_clean(info)]
+    return clean
+
+
 # (required) Check Function: Offcloud can report the cache status of magnets without adding them
 def check(element, force=False):
     if force:
@@ -178,11 +200,10 @@ def check(element, force=False):
         for release, info in zip(batch, response):
             if not isinstance(info, dict) or not info.get('cached'):
                 continue
-            names = [(str(f.get('filename', '')).lower(), f.get('size', 0) or 0) for f in info.get('files', [])]
-            has_video = any(n.endswith(video_extensions) and s >= min_video_size for n, s in names)
-            if not has_video or any(n.endswith(blocked_extensions) for n, s in names):
+            if not is_clean(info):
+                names = [str(f.get('filename', '')).lower() for f in info.get('files', [])]
                 ui_print('[offcloud] skipping ' + release.title + ': no real video file or contains programs/archives (' +
-                         ', '.join(n for n, s in names[:3]) + ')')
+                         ', '.join(names[:3]) + ')')
                 continue
             version_files = []
             for index, file_ in enumerate(info.get('files', [])):
