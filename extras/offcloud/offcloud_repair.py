@@ -134,19 +134,55 @@ def save_state(state):
     os.replace(tmp, STATE)
 
 
+def online():
+    """True when offcloud.com can be reached; a dead network is not a wedged mount."""
+    import socket
+    try:
+        socket.create_connection(('offcloud.com', 443), timeout=10).close()
+        return True
+    except OSError:
+        return False
+
+
+def container_running():
+    r = subprocess.run(['docker', 'inspect', '-f', '{{.State.Running}}', CONTAINER], capture_output=True, text=True)
+    return r.stdout.strip() == 'true'
+
+
+def start_mount():
+    """Start the container; a stale FUSE mount left on MOUNT stops it from starting, so drop that first."""
+    r = subprocess.run(['docker', 'start', CONTAINER], capture_output=True, text=True)
+    if r.returncode != 0 or not container_running():
+        log('start failed (' + (r.stderr.strip() or 'not running') + '), clearing the stale mount and retrying')
+        subprocess.run(['sudo', '-n', 'umount', '-l', MOUNT], capture_output=True)
+        subprocess.run(['docker', 'start', CONTAINER], capture_output=True)
+    log(CONTAINER + (' is running' if container_running() else ' is still NOT running'))
+
+
 def restart_mount(state):
+    if not online():
+        log('offcloud.com is unreachable (network down?), leaving the mount alone')
+        return
     last = state.get('_mount_restart', 0)
     if time.time() - last < RESTART_COOLDOWN:
         return
     state['_mount_restart'] = time.time()
+    save_state(state)
     log('mount is wedged, restarting ' + CONTAINER)
-    subprocess.run(['docker', 'restart', CONTAINER], capture_output=True)
+    subprocess.run(['docker', 'stop', CONTAINER], capture_output=True)
+    start_mount()
 
 
 def share_names(state):
     """Folder names on the WebDAV share, or None when the share cannot be trusted this pass."""
-    if not os.path.ismount(MOUNT):
-        log('mount is not available, skipping pass')
+    if not os.path.ismount(MOUNT) or not container_running():
+        if container_running():
+            log('mount is not available, skipping pass')
+        elif not online():
+            log(CONTAINER + ' is stopped but offcloud.com is unreachable, skipping pass')
+        else:
+            log(CONTAINER + ' is stopped, starting it')
+            start_mount()
         return None
     try:
         return set(os.listdir(MOUNT))

@@ -1,6 +1,6 @@
 # Setup overview: plex_debrid on the Raspberry Pi
 
-State as of 18 Oct 2026. Branch `offcloud` of `sasagr/plex_debrid`.
+State as of 1 Nov 2026. Branch `offcloud` of `sasagr/plex_debrid`.
 
 ## How a new title gets into Plex
 
@@ -22,7 +22,8 @@ Plex/Trakt watchlist ─▶ plex_debrid ─▶ Jackett (+FlareSolverr) search
 | **offcloud-sort** | Links each Offcloud transfer into `/mnt/offcloud-media/movies` or `/shows` (every 5 s); movies get only their main video and a folder name without site prefixes; removes links of transfers that are gone; triggers Plex scans both ways. | Always on, starts at boot | `journalctl -u offcloud-sort` |
 | **offcloud-cleanup** (timer) | Hourly: deletes Offcloud **episodes** that are watched (any watched mark) and whose last watch is more than 48 h ago. Never movies; names in `keep.txt` are protected. | Timer, starts at boot | `journalctl -u offcloud-cleanup` |
 | **ptsync-progress-cleanup** (timer) | Every 30 min (:05 and :35, after the PlexTraktSync sync): clears Plex play progress that Trakt no longer has, since PlexTraktSync only ever adds progress. Watched items keep their watched mark; unwatched ones go back to not started. Skips anything played in Plex in the last 2 h; never writes to Trakt. Script in `/home/pi/ptsync`. | Timer, starts at boot | `journalctl -u ptsync-progress-cleanup` |
-| **offcloud-repair** (timer) | Hourly: re-submits Offcloud transfers that vanished or stopped serving (only cached, video-only, never ones in `wrong_releases.json`); restarts the Offcloud mount if it lists nothing. | Timer, starts at boot | `journalctl -u offcloud-repair` |
+| **wifi-watchdog** (timer) | Every 2 min: if the Wi-Fi is not connected and not connecting, reconnects to the home network. NetworkManager gives up for good after the router refuses it for a while (22 Oct 2026 outage). Script in `/home/pi/netwatch`. | Timer, starts at boot | `journalctl -u wifi-watchdog` |
+| **offcloud-repair** (timer) | Hourly: re-submits Offcloud transfers that vanished or stopped serving (only cached, video-only, never ones in `wrong_releases.json`); restarts the Offcloud mount if it lists nothing (not while offcloud.com is unreachable), starts the mount container if it is stopped, and clears a stale mount that blocks the start. | Timer, starts at boot | `journalctl -u offcloud-repair` |
 
 ## 2. Docker containers (all `restart: unless-stopped`)
 
@@ -54,13 +55,14 @@ Plex/Trakt watchlist ─▶ plex_debrid ─▶ Jackett (+FlareSolverr) search
 | plex_debrid's working files | `downloads.jsonl`, `wrong_releases.json`, `rd_refused.json` in the plex_debrid folder |
 | Offcloud scripts and units (copies) | `extras/offcloud/` in this repository |
 | Plex progress cleanup script and units (copies) | `extras/ptsync/` in this repository |
+| Wi-Fi watchdog script and units (copies) | `extras/netwatch/` in this repository |
 
 ## 5. Plex, network and Pi settings that matter
 
 - **Plex scanning:** library scan every 30 min plus instant targeted scans; "Empty trash automatically after every scan" on; nightly "Update all libraries during maintenance" off.
 - **Remote access:** direct connection through a manual port forward on the modem to the Pi's port 32400. Control D bypasses `servers.plex.tv`, `v4.plex.tv` and `*.plex.direct`; Plex Discover stays on the Control D US redirect.
 - **Pi DNS:** stays on Tailscale DNS. Pointing it at `ctrld` (127.0.0.1) breaks DNS inside all Docker containers.
-- **Disabled on purpose:** Jellyfin (memory). Fan switches on at 65 °C.
+- **Disabled on purpose:** Jellyfin (memory); `RD.service`, the old direct Real-Debrid mount at `/mnt/RD` from before zurg. Fan switches on at 65 °C.
 
 ## Handy commands
 

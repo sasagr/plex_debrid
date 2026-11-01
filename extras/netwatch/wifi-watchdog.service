@@ -1,0 +1,7 @@
+[Unit]
+Description=Reconnect the Wi-Fi when NetworkManager has given up on it
+After=NetworkManager.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh /home/pi/netwatch/wifi_watchdog.sh
