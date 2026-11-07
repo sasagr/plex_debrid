@@ -1,0 +1,9 @@
+[Unit]
+Description=Delete Offcloud episodes of TV shows dropped on Trakt or removed from the Plex watchlist
+After=network-online.target plexmediaserver.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=pi
+ExecStart=/usr/bin/python3 -I /home/pi/offcloud-mount/offcloud_show_cleanup.py --apply

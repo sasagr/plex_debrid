@@ -1,6 +1,6 @@
 # Setup overview: plex_debrid on the Raspberry Pi
 
-State as of 1 Nov 2026. Branch `offcloud` of `sasagr/plex_debrid`.
+State as of 7 Nov 2026. Branch `offcloud` of `sasagr/plex_debrid`.
 
 ## How a new title gets into Plex
 
@@ -21,6 +21,7 @@ Plex/Trakt watchlist ─▶ plex_debrid ─▶ Jackett (+FlareSolverr) search
 | **Plex Media Server** (`plexmediaserver`) | The library: Movies and TV Shows, each reading both mounts. | Always on, starts at boot | Plex log |
 | **offcloud-sort** | Links each Offcloud transfer into `/mnt/offcloud-media/movies` or `/shows` (every 5 s); movies get only their main video and a folder name without site prefixes; removes links of transfers that are gone; triggers Plex scans both ways. | Always on, starts at boot | `journalctl -u offcloud-sort` |
 | **offcloud-cleanup** (timer) | Hourly: deletes Offcloud **episodes** that are watched (any watched mark) and whose last watch is more than 48 h ago. Never movies; names in `keep.txt` are protected. | Timer, starts at boot | `journalctl -u offcloud-cleanup` |
+| **offcloud-show-cleanup** (timer) | Hourly: deletes **all** Offcloud episodes of a TV show that is dropped on Trakt or was removed from the Plex watchlist, 24 h after it happened (putting it back cancels). Never movies; skips shows still on either watchlist, shows never seen on the watchlist (manual additions) and `keep.txt` names. | Timer, starts at boot | `journalctl -u offcloud-show-cleanup` |
 | **ptsync-progress-cleanup** (timer) | Every 30 min (:05 and :35, after the PlexTraktSync sync): clears Plex play progress that Trakt no longer has, since PlexTraktSync only ever adds progress. Watched items keep their watched mark; unwatched ones go back to not started. Skips anything played in Plex in the last 2 h; never writes to Trakt. Script in `/home/pi/ptsync`. | Timer, starts at boot | `journalctl -u ptsync-progress-cleanup` |
 | **wifi-watchdog** (timer) | Every 2 min: if the Wi-Fi is not connected and not connecting, reconnects to the home network (NetworkManager gives up for good after the router refuses it for a while, 22 Oct 2026 outage); if connected on a weak signal (below −70 dBm), moves to a much stronger access point of the same network (the Pi got stuck on a weak extender on 1 Nov 2026). Script in `/home/pi/netwatch`. | Timer, starts at boot | `journalctl -u wifi-watchdog` |
 | **offcloud-repair** (timer) | Hourly: re-submits Offcloud transfers that vanished or stopped serving (only cached, video-only, never ones in `wrong_releases.json`); restarts the Offcloud mount if it lists nothing (not while offcloud.com is unreachable), starts the mount container if it is stopped, and clears a stale mount that blocks the start. | Timer, starts at boot | `journalctl -u offcloud-repair` |
