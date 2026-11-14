@@ -5,11 +5,39 @@
 # so the Pi stays offline after the router recovers. While the router refuses it, the Pi may
 # also join a weak access point with the same name (an extender) and never move back, so a
 # connected Pi on a weak signal is roamed to a much stronger access point of the same network.
+# The Wi-Fi chip itself can also hang (kernel: "mmc1: Timeout waiting for hardware interrupt",
+# then brcmf errors -110; 14 Nov 2026 outage). Reconnecting cannot fix that: the driver is
+# reloaded once, and if the chip is still hung 10 minutes later the Pi reboots (not within an
+# hour of booting, so it cannot loop).
 # Runs every 2 minutes from a timer; does nothing while the wired port has a connection.
 CONN=$(nmcli -g NAME,TYPE connection show | grep ':802-11-wireless$' | head -1 | cut -d: -f1)
 [ "$(nmcli -g GENERAL.STATE device show eth0 2>/dev/null | cut -d' ' -f1)" = 100 ] && exit 0
 WEAK=-70        # dBm: below this the current access point counts as weak
 BETTER=15       # dB: a candidate must be at least this much stronger, and no weaker than -65 dBm
+RELOADED=/run/wifi-watchdog.reloaded   # time of the last driver reload; /run empties on reboot
+WSTATE=$(nmcli -g GENERAL.STATE device show wlan0 2>/dev/null | cut -d' ' -f1)
+[ "$WSTATE" = 100 ] && rm -f "$RELOADED"
+# hung: fresh chip errors in the kernel log, or still not connected since the driver reload
+if journalctl -k --since "-3 min" -q | grep -qE 'brcmf.*(-110|failed)|mmc1: Timeout waiting for hardware interrupt' \
+   || [ -f "$RELOADED" ]; then
+    if [ ! -f "$RELOADED" ]; then
+        echo "Wi-Fi chip not responding, reloading the brcmfmac driver"
+        date +%s > "$RELOADED"
+        timeout 60 modprobe -r brcmfmac_wcc brcmfmac; sleep 3; timeout 60 modprobe brcmfmac
+        sleep 15
+        nmcli -w 60 connection up "$CONN" && echo "reconnected after driver reload" || echo "still not connected after driver reload"
+        exit 0
+    fi
+    SINCE=$(( $(date +%s) - $(cat "$RELOADED") ))
+    UP=$(cut -d. -f1 /proc/uptime)
+    if [ "$SINCE" -ge 600 ] && [ "$UP" -ge 3600 ]; then
+        echo "Wi-Fi chip still not responding ${SINCE}s after the driver reload, rebooting"
+        systemctl reboot
+    else
+        echo "Wi-Fi chip still not responding (driver reloaded ${SINCE}s ago, up ${UP}s), waiting"
+    fi
+    exit 0
+fi
 if [ "$(nmcli -g GENERAL.STATE device show wlan0 | cut -d' ' -f1)" = 100 ]; then
     CUR=$(iw dev wlan0 link | awk '/^Connected to/{print $3}')
     SIG=$(iw dev wlan0 link | awk '/signal:/{print int($2)}')
